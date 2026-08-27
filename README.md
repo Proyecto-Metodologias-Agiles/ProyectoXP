@@ -2,7 +2,7 @@
 
 ## Ejecución de Pruebas Unitarias (TDD)
 
-Para ejecutar la suite completa de 46 pruebas unitarias automáticas:
+Para ejecutar pruebas unitarias automáticas:
 
 ```bash
 python run_tests.py
