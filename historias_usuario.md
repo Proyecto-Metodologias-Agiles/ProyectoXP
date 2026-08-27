@@ -1,4 +1,4 @@
-# 📋 Backlog de Historias de Usuario - Carrito de Compras (XP)
+# Backlog de Historias de Usuario - Carrito de Compras (XP)
 
 | ID | Historia de Usuario | Prioridad (Cliente) | Estimación (Story Points) | Iteración | Estado |
 | :--- | :--- | :---: | :---: | :---: | :---: |
