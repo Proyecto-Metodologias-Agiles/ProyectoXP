@@ -1,0 +1,230 @@
+"""
+Pruebas Unitarias para el Carrito de Compras (TDD XP).
+Archivo: carrito.py_test
+"""
+
+import sys
+import os
+import unittest
+
+# Asegurar que la carpeta raíz del proyecto esté en el path de importación
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.producto import Producto
+from src.descuento import Cupon, TipoDescuento, GestorDescuentos
+from src.carrito import Carrito, ItemCarrito
+
+
+class TestCarrito(unittest.TestCase):
+    """Suite de pruebas unitarias para el Carrito de Compras."""
+
+    def setUp(self):
+        self.p1 = Producto("P01", "Laptop Pro 16", 1200.0, stock=5, categoria="Laptops")
+        self.p2 = Producto("P02", "Mouse Inalámbrico", 30.0, stock=20, categoria="Accesorios")
+        self.p3 = Producto("P03", "Teclado Mecánico", 80.0, stock=10, categoria="Accesorios")
+        self.p4 = Producto("P04", "Monitor 4K 27", 350.0, stock=3, categoria="Monitores")
+
+        self.gestor = GestorDescuentos()
+        self.carrito = Carrito(tasa_impuesto=0.16, gestor_descuentos=self.gestor)
+
+    def test_carrito_inicialmente_vacio(self):
+        """Verifica que un carrito nuevo esté vacío y sus cálculos sean cero."""
+        self.assertTrue(self.carrito.esta_vacio())
+        self.assertEqual(self.carrito.obtener_cantidad_total(), 0)
+        self.assertEqual(self.carrito.calcular_subtotal(), 0.0)
+        self.assertEqual(self.carrito.calcular_descuento(), 0.0)
+        self.assertEqual(self.carrito.calcular_impuesto(), 0.0)
+        self.assertEqual(self.carrito.calcular_total(), 0.0)
+
+    def test_tasa_impuesto_invalida(self):
+        """Verifica que la tasa de impuesto no pueda ser negativa."""
+        with self.assertRaises(ValueError):
+            Carrito(tasa_impuesto=-0.05)
+
+    def test_agregar_producto_nuevo(self):
+        """Verifica agregar un producto nuevo al carrito."""
+        self.carrito.agregar_producto(self.p1, cantidad=1)
+        self.assertFalse(self.carrito.esta_vacio())
+        self.assertEqual(self.carrito.obtener_cantidad_total(), 1)
+        self.assertEqual(self.carrito.calcular_subtotal(), 1200.0)
+
+    def test_agregar_producto_acumulativo(self):
+        """Verifica que al agregar el mismo producto se acumule la cantidad."""
+        self.carrito.agregar_producto(self.p2, cantidad=2)
+        self.carrito.agregar_producto(self.p2, cantidad=3)
+        self.assertEqual(self.carrito.obtener_cantidad_total(), 5)
+        # 5 * 30.0 = 150.0
+        self.assertEqual(self.carrito.calcular_subtotal(), 150.0)
+
+    def test_agregar_producto_excede_stock(self):
+        """Verifica que no permita agregar más unidades que el stock disponible."""
+        # p4 tiene stock = 3
+        with self.assertRaises(ValueError) as ctx:
+            self.carrito.agregar_producto(self.p4, cantidad=5)
+        self.assertIn("Stock insuficiente", str(ctx.exception))
+
+        # Agregar dentro del límite y luego excederlo en la suma
+        self.carrito.agregar_producto(self.p4, cantidad=2)
+        with self.assertRaises(ValueError):
+            self.carrito.agregar_producto(self.p4, cantidad=2)  # Total 4 > 3
+
+    def test_agregar_producto_invalido(self):
+        """Verifica validaciones de argumentos al agregar."""
+        with self.assertRaises(TypeError):
+            self.carrito.agregar_producto("no_es_producto", 1)  # type: ignore
+
+        with self.assertRaises(ValueError):
+            self.carrito.agregar_producto(self.p1, cantidad=0)
+
+        with self.assertRaises(ValueError):
+            self.carrito.agregar_producto(self.p1, cantidad=-2)
+
+    def test_remover_producto_existente(self):
+        """Verifica la eliminación de un producto del carrito."""
+        self.carrito.agregar_producto(self.p1, cantidad=1)
+        self.carrito.agregar_producto(self.p2, cantidad=2)
+
+        eliminado = self.carrito.remover_producto(self.p1.id)
+        self.assertTrue(eliminado)
+        self.assertNotIn(self.p1.id, self.carrito.items)
+        self.assertEqual(self.carrito.obtener_cantidad_total(), 2)
+        self.assertEqual(self.carrito.calcular_subtotal(), 60.0)
+
+    def test_remover_producto_inexistente(self):
+        """Verifica remover un ID que no está en el carrito."""
+        self.carrito.agregar_producto(self.p2, cantidad=1)
+        eliminado = self.carrito.remover_producto("ID_FANTASMA")
+        self.assertFalse(eliminado)
+
+    def test_modificar_cantidad_valida(self):
+        """Verifica cambiar la cantidad de un producto."""
+        self.carrito.agregar_producto(self.p2, cantidad=2)
+        self.carrito.modificar_cantidad(self.p2.id, 5)
+        self.assertEqual(self.carrito.items[self.p2.id].cantidad, 5)
+        self.assertEqual(self.carrito.calcular_subtotal(), 150.0)
+
+    def test_modificar_cantidad_a_cero_elimina(self):
+        """Verifica que modificar la cantidad a 0 remueva el producto."""
+        self.carrito.agregar_producto(self.p2, cantidad=2)
+        self.carrito.modificar_cantidad(self.p2.id, 0)
+        self.assertNotIn(self.p2.id, self.carrito.items)
+        self.assertTrue(self.carrito.esta_vacio())
+
+    def test_modificar_cantidad_excede_stock(self):
+        """Verifica error si la nueva cantidad excede el stock."""
+        self.carrito.agregar_producto(self.p4, cantidad=1)
+        with self.assertRaises(ValueError):
+            self.carrito.modificar_cantidad(self.p4.id, 10)
+
+    def test_vaciar_carrito(self):
+        """Verifica el vaciado total del carrito y remoción de cupón."""
+        self.carrito.agregar_producto(self.p1, cantidad=1)
+        self.carrito.agregar_producto(self.p3, cantidad=2)
+        self.carrito.aplicar_cupon("DESC10")
+
+        self.assertFalse(self.carrito.esta_vacio())
+        self.assertIsNotNone(self.carrito.cupon_aplicado)
+
+        self.carrito.vaciar_carrito()
+
+        self.assertTrue(self.carrito.esta_vacio())
+        self.assertIsNone(self.carrito.cupon_aplicado)
+        self.assertEqual(self.carrito.calcular_subtotal(), 0.0)
+        self.assertEqual(self.carrito.calcular_total(), 0.0)
+
+    def test_calcular_subtotal_multiples_productos(self):
+        """Verifica el cálculo de subtotal con varios productos."""
+        # p1: 1 * 1200 = 1200
+        # p2: 2 * 30 = 60
+        # p3: 3 * 80 = 240
+        # Subtotal esperado = 1500.0
+        self.carrito.agregar_producto(self.p1, 1)
+        self.carrito.agregar_producto(self.p2, 2)
+        self.carrito.agregar_producto(self.p3, 3)
+
+        self.assertEqual(self.carrito.calcular_subtotal(), 1500.0)
+
+    def test_aplicar_cupon_en_carrito_vacio(self):
+        """Verifica que no se pueda aplicar cupón en carrito vacío."""
+        exito, msg = self.carrito.aplicar_cupon("DESC10")
+        self.assertFalse(exito)
+        self.assertIn("carrito vacío", msg)
+        self.assertIsNone(self.carrito.cupon_aplicado)
+
+    def test_aplicar_cupon_porcentual_y_calculo_total(self):
+        """Verifica cálculo completo con cupón porcentual."""
+        # Subtotal: 1000.0 (p3 * 10 = 800 + p2 * 5 = 150 + etc)
+        # Probemos con p1(1200): Subtotal = 1200.0
+        # Cupon DESC10 (10%): Descuento = 120.0
+        # Base imponible = 1200 - 120 = 1080.0
+        # IVA (16%) = 1080 * 0.16 = 172.80
+        # Total = 1080 + 172.80 = 1252.80
+        self.carrito.agregar_producto(self.p1, 1)
+        exito, _ = self.carrito.aplicar_cupon("DESC10")
+        self.assertTrue(exito)
+
+        self.assertEqual(self.carrito.calcular_subtotal(), 1200.0)
+        self.assertEqual(self.carrito.calcular_descuento(), 120.0)
+        self.assertEqual(self.carrito.calcular_base_imponible(), 1080.0)
+        self.assertEqual(self.carrito.calcular_impuesto(), 172.80)
+        self.assertEqual(self.carrito.calcular_total(), 1252.80)
+
+    def test_aplicar_cupon_monto_fijo(self):
+        """Verifica cálculo con cupón de monto fijo SUPER50 ($50 off min $150)."""
+        # p4 (350.0) -> Subtotal 350.0
+        # Descuento = 50.0
+        # Base = 300.0
+        # Impuesto (16%) = 48.0
+        # Total = 348.0
+        self.carrito.agregar_producto(self.p4, 1)
+        exito, _ = self.carrito.aplicar_cupon("SUPER50")
+        self.assertTrue(exito)
+
+        self.assertEqual(self.carrito.calcular_subtotal(), 350.0)
+        self.assertEqual(self.carrito.calcular_descuento(), 50.0)
+        self.assertEqual(self.carrito.calcular_base_imponible(), 300.0)
+        self.assertEqual(self.carrito.calcular_impuesto(), 48.0)
+        self.assertEqual(self.carrito.calcular_total(), 348.0)
+
+    def test_cupon_se_invalida_si_subtotal_baja_del_minimo(self):
+        """Verifica que al remover un producto el cupón se revalide automáticamente."""
+        # BIENVENIDA20 requiere mínimo $200
+        # Agregamos p1 (1200) y p2 (30)
+        self.carrito.agregar_producto(self.p1, 1)
+        self.carrito.agregar_producto(self.p2, 1)
+        self.carrito.aplicar_cupon("BIENVENIDA20")
+        self.assertIsNotNone(self.carrito.cupon_aplicado)
+
+        # Ahora removemos p1 (queda solo p2 por $30 < $200)
+        self.carrito.remover_producto(self.p1.id)
+        self.assertIsNone(self.carrito.cupon_aplicado)
+        self.assertEqual(self.carrito.calcular_descuento(), 0.0)
+
+    def test_remover_cupon_manualmente(self):
+        """Verifica remover el cupón aplicado."""
+        self.carrito.agregar_producto(self.p1, 1)
+        self.carrito.aplicar_cupon("DESC10")
+        self.assertIsNotNone(self.carrito.cupon_aplicado)
+
+        self.carrito.remover_cupon()
+        self.assertIsNone(self.carrito.cupon_aplicado)
+        self.assertEqual(self.carrito.calcular_descuento(), 0.0)
+
+    def test_obtener_resumen_completo(self):
+        """Verifica el diccionario generado por obtener_resumen."""
+        self.carrito.agregar_producto(self.p2, 2)  # 2 * 30 = 60
+        resumen = self.carrito.obtener_resumen()
+
+        self.assertEqual(resumen["cantidad_articulos"], 2)
+        self.assertEqual(resumen["subtotal"], 60.0)
+        self.assertEqual(resumen["descuento"], 0.0)
+        self.assertIsNone(resumen["cupon_aplicado"])
+        self.assertEqual(resumen["base_imponible"], 60.0)
+        self.assertEqual(resumen["tasa_impuesto"], 0.16)
+        self.assertEqual(resumen["impuesto"], 9.60)
+        self.assertEqual(resumen["total"], 69.60)
+        self.assertFalse(resumen["esta_vacio"])
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

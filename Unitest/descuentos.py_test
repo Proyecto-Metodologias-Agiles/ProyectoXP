@@ -1,0 +1,148 @@
+"""
+Pruebas Unitarias para Descuentos y Cupones (TDD XP).
+Archivo: descuentos.py_test
+"""
+
+import sys
+import os
+import unittest
+
+# Asegurar que la carpeta raíz del proyecto esté en el path de importación
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.descuento import Cupon, TipoDescuento, GestorDescuentos
+
+
+class TestDescuentos(unittest.TestCase):
+    """Suite de pruebas unitarias para el motor de cupones y descuentos."""
+
+    def setUp(self):
+        self.gestor = GestorDescuentos()
+
+    def test_creacion_cupon_porcentual_valido(self):
+        """Verifica la creación de un cupón porcentual."""
+        cupon = Cupon(codigo="DESC10", tipo=TipoDescuento.PORCENTUAL, valor=10.0, monto_minimo=50.0)
+        self.assertEqual(cupon.codigo, "DESC10")
+        self.assertEqual(cupon.tipo, TipoDescuento.PORCENTUAL)
+        self.assertEqual(cupon.valor, 10.0)
+        self.assertEqual(cupon.monto_minimo, 50.0)
+        self.assertTrue(cupon.activo)
+
+    def test_creacion_cupon_monto_fijo_valido(self):
+        """Verifica la creación de un cupón de monto fijo."""
+        cupon = Cupon(codigo="SUPER50", tipo=TipoDescuento.MONTO_FIJO, valor=50.0, monto_minimo=150.0)
+        self.assertEqual(cupon.codigo, "SUPER50")
+        self.assertEqual(cupon.tipo, TipoDescuento.MONTO_FIJO)
+        self.assertEqual(cupon.valor, 50.0)
+
+    def test_creacion_cupon_codigo_invalido(self):
+        """Verifica que el código del cupón no pueda ser vacío."""
+        with self.assertRaises(ValueError):
+            Cupon(codigo="", tipo=TipoDescuento.PORCENTUAL, valor=10.0)
+        with self.assertRaises(ValueError):
+            Cupon(codigo="   ", tipo=TipoDescuento.PORCENTUAL, valor=10.0)
+
+    def test_creacion_cupon_valor_invalido(self):
+        """Verifica que no se permitan valores negativos o porcentajes mayores al 100%."""
+        with self.assertRaises(ValueError):
+            Cupon(codigo="NEG10", tipo=TipoDescuento.PORCENTUAL, valor=-10.0)
+        with self.assertRaises(ValueError):
+            Cupon(codigo="ZERO", tipo=TipoDescuento.PORCENTUAL, valor=0)
+        with self.assertRaises(ValueError):
+            Cupon(codigo="MAX150", tipo=TipoDescuento.PORCENTUAL, valor=150.0)
+
+    def test_creacion_cupon_monto_minimo_invalido(self):
+        """Verifica que el monto mínimo no pueda ser negativo."""
+        with self.assertRaises(ValueError):
+            Cupon(codigo="BADMIN", tipo=TipoDescuento.PORCENTUAL, valor=10.0, monto_minimo=-20.0)
+
+    def test_es_aplicable_segun_monto_minimo(self):
+        """Verifica si el cupón se puede aplicar según el subtotal."""
+        cupon = Cupon(codigo="MIN100", tipo=TipoDescuento.PORCENTUAL, valor=10.0, monto_minimo=100.0)
+        
+        # Subtotal menor al mínimo
+        aplicable, motivo = cupon.es_aplicable(80.0)
+        self.assertFalse(aplicable)
+        self.assertIn("compra mínima", motivo)
+
+        # Subtotal igual o mayor al mínimo
+        aplicable, motivo = cupon.es_aplicable(100.0)
+        self.assertTrue(aplicable)
+
+        aplicable, motivo = cupon.es_aplicable(250.0)
+        self.assertTrue(aplicable)
+
+    def test_cupon_inactivo_no_aplicable(self):
+        """Verifica que un cupón inactivo no pueda ser aplicado."""
+        cupon = Cupon(codigo="OFF50", tipo=TipoDescuento.PORCENTUAL, valor=50.0, activo=False)
+        aplicable, motivo = cupon.es_aplicable(500.0)
+        self.assertFalse(aplicable)
+        self.assertIn("inactivo o vencido", motivo)
+
+    def test_calcular_monto_descuento_porcentual(self):
+        """Verifica el cálculo exacto del descuento porcentual."""
+        cupon = Cupon(codigo="DESC20", tipo=TipoDescuento.PORCENTUAL, valor=20.0, monto_minimo=100.0)
+        
+        # Subtotal 200 -> Descuento = 40
+        self.assertEqual(cupon.calcular_monto_descuento(200.0), 40.0)
+        
+        # Subtotal 150.50 -> Descuento = 30.10
+        self.assertEqual(cupon.calcular_monto_descuento(150.50), 30.10)
+
+        # Subtotal menor a mínimo -> 0
+        self.assertEqual(cupon.calcular_monto_descuento(50.0), 0.0)
+
+    def test_calcular_monto_descuento_fijo(self):
+        """Verifica el cálculo del descuento de monto fijo y topes."""
+        cupon = Cupon(codigo="FIJO50", tipo=TipoDescuento.MONTO_FIJO, valor=50.0, monto_minimo=0.0)
+        
+        # Subtotal 100 -> Descuento 50
+        self.assertEqual(cupon.calcular_monto_descuento(100.0), 50.0)
+
+        # Si el subtotal es 30, el descuento no puede superar el subtotal (tope = 30)
+        self.assertEqual(cupon.calcular_monto_descuento(30.0), 30.0)
+
+    def test_gestor_validar_cupon_existente(self):
+        """Verifica la validación exitosa de cupones predeterminados."""
+        valido, mensaje, cupon = self.gestor.validar_y_obtener("DESC10", 100.0)
+        self.assertTrue(valido)
+        self.assertIsNotNone(cupon)
+        self.assertEqual(cupon.codigo, "DESC10")
+
+    def test_gestor_validar_cupon_case_insensitive(self):
+        """Verifica que los códigos se procesen sin importar mayúsculas o minúsculas."""
+        valido, _, cupon = self.gestor.validar_y_obtener("desc10", 100.0)
+        self.assertTrue(valido)
+        self.assertEqual(cupon.codigo, "DESC10")
+
+        valido, _, cupon = self.gestor.validar_y_obtener("  Bienvenida20  ", 250.0)
+        self.assertTrue(valido)
+        self.assertEqual(cupon.codigo, "BIENVENIDA20")
+
+    def test_gestor_validar_cupon_no_existente(self):
+        """Verifica rechazo de cupones inexistentes."""
+        valido, mensaje, cupon = self.gestor.validar_y_obtener("INVENTADO99", 500.0)
+        self.assertFalse(valido)
+        self.assertIsNone(cupon)
+        self.assertIn("no existe", mensaje)
+
+    def test_gestor_validar_cupon_monto_minimo_insuficiente(self):
+        """Verifica rechazo cuando el subtotal no alcanza el mínimo requerido."""
+        # BIENVENIDA20 requiere mínimo $200
+        valido, mensaje, cupon = self.gestor.validar_y_obtener("BIENVENIDA20", 150.0)
+        self.assertFalse(valido)
+        self.assertIsNone(cupon)
+        self.assertIn("requiere una compra mínima", mensaje)
+
+    def test_gestor_registrar_nuevo_cupon(self):
+        """Verifica el registro dinámico de nuevos cupones."""
+        nuevo = Cupon("BLACKFRIDAY", TipoDescuento.PORCENTUAL, 40.0, monto_minimo=100.0)
+        self.gestor.registrar_cupon(nuevo)
+
+        valido, _, cupon = self.gestor.validar_y_obtener("BLACKFRIDAY", 200.0)
+        self.assertTrue(valido)
+        self.assertEqual(cupon.valor, 40.0)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

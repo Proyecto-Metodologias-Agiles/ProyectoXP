@@ -1,0 +1,153 @@
+"""
+Pruebas Unitarias para el modelo Producto (TDD XP).
+Archivo: productos.py_test
+"""
+
+import sys
+import os
+import unittest
+
+# Asegurar que la carpeta raíz del proyecto esté en el path de importación
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from src.producto import Producto
+
+
+class TestProducto(unittest.TestCase):
+    """Suite de pruebas unitarias para la entidad Producto."""
+
+    def test_creacion_producto_valido(self):
+        """Verifica que un producto con datos válidos se inicialice correctamente."""
+        prod = Producto(
+            id_producto="P001",
+            nombre="Laptop Gamer Pro",
+            precio=1299.99,
+            stock=10,
+            categoria="Tecnología",
+            descripcion="Laptop para trabajo y juegos"
+        )
+        self.assertEqual(prod.id, "P001")
+        self.assertEqual(prod.nombre, "Laptop Gamer Pro")
+        self.assertEqual(prod.precio, 1299.99)
+        self.assertEqual(prod.stock, 10)
+        self.assertEqual(prod.categoria, "Tecnología")
+        self.assertEqual(prod.descripcion, "Laptop para trabajo y juegos")
+
+    def test_creacion_producto_id_invalido(self):
+        """Verifica que no se permita crear un producto con ID vacío o en blanco."""
+        with self.assertRaises(ValueError) as ctx:
+            Producto(id_producto="", nombre="Mouse", precio=25.0, stock=5)
+        self.assertIn("ID del producto no puede estar vacío", str(ctx.exception))
+
+        with self.assertRaises(ValueError):
+            Producto(id_producto="   ", nombre="Mouse", precio=25.0, stock=5)
+
+    def test_creacion_producto_nombre_invalido(self):
+        """Verifica que no se permita un nombre vacío o con puros espacios."""
+        with self.assertRaises(ValueError) as ctx:
+            Producto(id_producto="P002", nombre="", precio=50.0, stock=5)
+        self.assertIn("nombre del producto no puede estar vacío", str(ctx.exception))
+
+        with self.assertRaises(ValueError):
+            Producto(id_producto="P002", nombre="   ", precio=50.0, stock=5)
+
+    def test_creacion_producto_precio_invalido(self):
+        """Verifica que el precio deba ser numérico y mayor que cero."""
+        # Precio cero
+        with self.assertRaises(ValueError) as ctx:
+            Producto(id_producto="P003", nombre="Teclado", precio=0, stock=5)
+        self.assertIn("precio del producto debe ser mayor a 0", str(ctx.exception))
+
+        # Precio negativo
+        with self.assertRaises(ValueError):
+            Producto(id_producto="P003", nombre="Teclado", precio=-15.50, stock=5)
+
+        # Precio no numérico
+        with self.assertRaises(ValueError) as ctx:
+            Producto(id_producto="P003", nombre="Teclado", precio="gratis", stock=5)
+        self.assertIn("debe ser un número válido", str(ctx.exception))
+
+    def test_creacion_producto_stock_invalido(self):
+        """Verifica que el stock no pueda ser negativo ni no entero."""
+        with self.assertRaises(ValueError) as ctx:
+            Producto(id_producto="P004", nombre="Monitor", precio=199.99, stock=-1)
+        self.assertIn("stock del producto no puede ser negativo", str(ctx.exception))
+
+        with self.assertRaises(ValueError):
+            Producto(id_producto="P004", nombre="Monitor", precio=199.99, stock="muchos")
+
+    def test_tiene_stock_suficiente(self):
+        """Verifica la consulta de disponibilidad de stock."""
+        prod = Producto(id_producto="P005", nombre="Auriculares", precio=49.99, stock=5)
+        self.assertTrue(prod.tiene_stock_suficiente(3))
+        self.assertTrue(prod.tiene_stock_suficiente(5))
+        self.assertFalse(prod.tiene_stock_suficiente(6))
+        self.assertFalse(prod.tiene_stock_suficiente(0))
+        self.assertFalse(prod.tiene_stock_suficiente(-2))
+
+    def test_reducir_stock_exitoso(self):
+        """Verifica la reducción adecuada del stock disponible."""
+        prod = Producto(id_producto="P006", nombre="Cámara Web", precio=79.99, stock=10)
+        prod.reducir_stock(4)
+        self.assertEqual(prod.stock, 6)
+        prod.reducir_stock(6)
+        self.assertEqual(prod.stock, 0)
+
+    def test_reducir_stock_insuficiente(self):
+        """Verifica que lance excepción al intentar reducir más stock del disponible."""
+        prod = Producto(id_producto="P007", nombre="Micrófono", precio=89.99, stock=2)
+        with self.assertRaises(ValueError) as ctx:
+            prod.reducir_stock(5)
+        self.assertIn("Stock insuficiente", str(ctx.exception))
+
+    def test_reducir_stock_cantidad_invalida(self):
+        """Verifica que no se pueda reducir cantidades negativas o cero."""
+        prod = Producto(id_producto="P008", nombre="Silla Ergonómica", precio=250.0, stock=5)
+        with self.assertRaises(ValueError):
+            prod.reducir_stock(0)
+        with self.assertRaises(ValueError):
+            prod.reducir_stock(-3)
+
+    def test_aumentar_stock_exitoso(self):
+        """Verifica que el stock se incremente correctamente."""
+        prod = Producto(id_producto="P009", nombre="Mousepad RGB", precio=19.99, stock=3)
+        prod.aumentar_stock(7)
+        self.assertEqual(prod.stock, 10)
+
+    def test_aumentar_stock_invalido(self):
+        """Verifica que no se permita aumentar cantidades no positivas."""
+        prod = Producto(id_producto="P010", nombre="Hub USB-C", precio=29.99, stock=4)
+        with self.assertRaises(ValueError):
+            prod.aumentar_stock(0)
+        with self.assertRaises(ValueError):
+            prod.aumentar_stock(-2)
+
+    def test_to_dict_serializacion(self):
+        """Verifica que to_dict devuelva la estructura adecuada de datos."""
+        prod = Producto(
+            id_producto="P011",
+            nombre="Disco SSD 1TB",
+            precio=95.50,
+            stock=15,
+            categoria="Almacenamiento",
+            descripcion="NVMe M.2 ultra rápido"
+        )
+        data = prod.to_dict()
+        self.assertEqual(data["id"], "P011")
+        self.assertEqual(data["nombre"], "Disco SSD 1TB")
+        self.assertEqual(data["precio"], 95.50)
+        self.assertEqual(data["stock"], 15)
+        self.assertEqual(data["categoria"], "Almacenamiento")
+        self.assertEqual(data["descripcion"], "NVMe M.2 ultra rápido")
+
+    def test_igualdad_productos_por_id(self):
+        """Verifica que dos instancias con el mismo ID sean consideradas iguales."""
+        prod1 = Producto("P012", "Cargador 65W", 30.0, stock=2)
+        prod2 = Producto("P012", "Cargador 65W V2", 35.0, stock=5)
+        prod3 = Producto("P013", "Cargador 100W", 45.0, stock=1)
+        self.assertEqual(prod1, prod2)
+        self.assertNotEqual(prod1, prod3)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
